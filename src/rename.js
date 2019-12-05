@@ -2,7 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const {getJsonFile} = require('./index')
 
-let data = getJsonFile(path.resolve(__dirname,'../catch/allSongsInfo.json1')) || []
+let data = getJsonFile(path.resolve(__dirname,'../catch/allSongsInfo.json')) || []
 console.log(data)
 
 function adiFindItem(sid){
