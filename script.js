@@ -64,5 +64,5 @@ const {getUserInfo,getIdsInfo,getJsonFile,mkdir,task} = require('./src/index')
     return pre
   },'')
   fs.writeFileSync(path.resolve(__dirname,'./catch/downLoad.txt'),downLoadStr)
-  console.log('生成下载列表成功')
+  console.log('生成下载列表成功 ./catch/downLoad.txt')
 })();
