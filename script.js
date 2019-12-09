@@ -1,9 +1,10 @@
 const inquirer = require('inquirer')
 const fs = require('fs')
 const path = require('path')
-const {getUserInfo,getEverySongsInfo,getJsonFile} = require('./src/index')
+const {getUserInfo,getIdsInfo,getJsonFile,mkdir,task} = require('./src/index')
 
-;(async function(){
+;(async()=>{
+  await mkdir(path.resolve(__dirname,'./catch'))
   let {cookie} = await inquirer.prompt([
     {
       type: 'input',
@@ -14,44 +15,54 @@ const {getUserInfo,getEverySongsInfo,getJsonFile} = require('./src/index')
   if(!cookie){
     return console.log('cookie不正确，不能为空')
   }
+  // 获取收藏歌曲列表
+  let [err,arrSongs] = await getUserInfo(cookie)
+  if(err){
+    throw new Error(err)
+  }
+  if(arrSongs.length === 0){
+    throw new Error('没有收藏任何歌曲')
+  }
+  // 提出所有sid ,整理为一个arr 并保存arrSid
+  let arrSid = arrSongs.reduce((pre,{sid})=>{
+    pre.push(sid)
+    return pre
+  },[])
+  fs.writeFileSync(path.resolve(__dirname,'./catch/arrSid.json'),JSON.stringify(arrSid))
 
-  // 第一步：获取收藏列表ids
-  console.log('获取{sid}获取收藏{songs}列表')
-  let err0,data = null
-  data = getJsonFile(path.resolve(__dirname,'./catch/userinfo.json'))
-  if(data === null){
-    [err0,data] = await getUserInfo(cookie)
-    if(err0){
-      throw new Error(err)
-    }
-    if(!data.songs){
-      throw new Error('没有找到歌曲songs列表')
-    }
+  console.log(`发现你有${arrSongs.length}首收藏歌曲`)
+  console.log(`获取所有歌曲详细信息中...稍等`)
   
-    console.log('写入./catch/userinfo.json')
-    fs.writeFileSync(path.resolve(__dirname,'./catch/userinfo.json'),JSON.stringify(data))
-  }
-
-  // 第二步
-  console.log('获取{sid}获取歌曲详细列')
-  let err1,allSongsInfo = null
-  allSongsInfo = getJsonFile(path.resolve(__dirname,'./catch/allSongsInfo.json'))
-  if(allSongsInfo === null){
-    [err1,allSongsInfo] = await getEverySongsInfo(cookie,data.songs)
-    if(err1){
-      throw new Error(err)
+  // 拆分成30一组结构
+  let objSongsId = arrSongs.reduce((pre,{sid},index)=>{
+    let keyName = 'key-' + parseInt((index+1)/30,10)
+    if(!pre[keyName]){
+      pre[keyName] = []
     }
-    console.log('写入./catch/allSongsInfo.json')
-    fs.writeFileSync(path.resolve(__dirname,'./catch/allSongsInfo.json'),JSON.stringify(allSongsInfo))
-  }
+    pre[keyName].push(sid)
+    return pre
+  },{})
 
-  // 第三步
-  console.log('生成下载download.txt 下载列表')
-  let downloadList = allSongsInfo.reduce((pre,cur)=>{
-    if(cur.url){
-      pre.push(cur.url)
+  // 生成队列函数 数组
+  let arrTask = Object.keys(objSongsId).reduce((pre,key)=>{
+    let arrSongs = objSongsId[key]
+    pre.push(getIdsInfo.bind(null,cookie,arrSongs))
+    return pre
+  },[])
+
+  // 每首收藏歌曲详细信息 打包成arr 并写入 arrSidInfo.json文件
+  let arrSidInfo = await task(arrTask,function(pre,[err,data]){
+    if(data){
+      pre = [...pre,...data]
     }
     return pre
-  },[]).join('\n')
-  fs.writeFileSync(path.resolve(__dirname,'./catch/download.txt'),downloadList)
+  },[])
+  fs.writeFileSync(path.resolve(__dirname,'./catch/arrSidInfo.json'),JSON.stringify(arrSidInfo))
+  // 生成下载列表
+  let downLoadStr = arrSidInfo.reduce((pre,{url})=>{
+    pre+=`${url}\n`
+    return pre
+  },'')
+  fs.writeFileSync(path.resolve(__dirname,'./catch/downLoad.txt'),downLoadStr)
+  console.log('生成下载列表成功')
 })();

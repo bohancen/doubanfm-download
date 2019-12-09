@@ -2,11 +2,17 @@ const fs = require('fs')
 const path = require('path')
 const request = require('request')
 
+// promiseWrap
+const promiseWrap = promise => {
+  return promise
+    .then(data => [null, data])
+    .catch(err => [err, null])
+}
+
 
 // 获取个人信息 收藏歌曲
 function getUserInfo(cookie){
-  console.log('getUserInfo')
-  return new Promise((r,j)=>{
+  return promiseWrap(new Promise((r,j)=>{
     request({
       method:'get',
       url:'https://fm.douban.com/j/v2/redheart/basic',
@@ -14,21 +20,26 @@ function getUserInfo(cookie){
         cookie
       }
     },(error, response, body)=>{
+      let songs = null
       if(error){
-        j([error,null])
-        return
+        return j(error)
       }
-      try{body = JSON.parse(body)}catch(e){}
-      r([null,body])
+      try{
+        songs = JSON.parse(body).songs
+      }catch(e){}
+      if(songs === null){
+        return j('未找到songs字段')
+      }
+      r(songs)
     })
-  })
+  }))
 }
 
-// 用 sogns的 sid: "551194" 批量获取歌曲信息
+// 用 sogns的 sid: "551194" 批量获取歌曲信息 return arr
 function getIdsInfo(cookie,arryIds){
-  console.log(getIdsInfo)
+  // console.log(getIdsInfo)
   let sids = arryIds.join('|')
-  return new Promise((resolve,reject)=>{
+  return promiseWrap(new Promise((resolve,reject)=>{
     request({
       method:'post',
       url:'https://fm.douban.com/j/v2/redheart/songs',
@@ -46,13 +57,12 @@ function getIdsInfo(cookie,arryIds){
         reject(error)
         return 
       }
-      resolve(body)
-      // console.log('success')
       try{
-        // console.log(JSON.parse(body))
+        body = JSON.parse(body)
       }catch(e){}
+      resolve(body)
     })
-  })
+  }))
 }
 
 // 获取每一首歌曲的详细信息
@@ -98,12 +108,48 @@ function getJsonFile(pathName){
   try{
     res = JSON.parse(fs.readFileSync(pathName, 'utf8'))
   }catch(e){}
-  if(res === null){}
+  // if(res === null){}
   return res
+}
+
+function mkdir(pathDir){
+  return new Promise((r,j)=>{
+      fs.stat(pathDir,(err,stats)=>{
+          if(err || stats.isDirectory() === false){
+              fs.mkdir(pathDir, { recursive: true }, (err) => {
+                  if (err) {
+                      return j([err,null])
+                  }
+                  r([null,true])
+              })
+              return
+          }
+          r([null,true])
+      })
+  })
+}
+
+async function task(arrTask,fn,pre){
+  let index = 0
+  let maxIndex = arrTask.length
+  let innerTask = async function(){
+    if(index>=maxIndex){
+      return pre
+    }
+    console.log(`进度:${index}/${maxIndex}`)
+    let [err,data] = await arrTask[index]()
+    pre = fn(pre,[err,data])
+    index+=1
+    return await innerTask()
+  }
+  return await innerTask()
 }
 
 module.exports={
   getUserInfo,
+  getIdsInfo,
   getEverySongsInfo,
   getJsonFile,
+  mkdir,
+  task
 }
